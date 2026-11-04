@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#090d16">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>VR Passthrough SBS - Dual Mobile Headset Display</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Main WebGL VR Canvas -->
+  <canvas id="glCanvas"></canvas>
+
+  <!-- Hidden video element for camera stream -->
+  <video id="cameraVideo" playsinline autoplay muted></video>
+
+  <!-- Subtle screen-center divider guide line (rendered in DOM or Shader) -->
+  <div id="centerDividerLine" class="center-divider-line"></div>
+
+  <!-- Minimal VR Tap Trigger (visible when HUD is hidden) -->
+  <div id="vrFloatingTrigger" class="vr-floating-trigger" title="Tap to open controls">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+    <span>Controls</span>
+  </div>
+
+  <!-- VR Heads-Up Display (HUD) Controls -->
+  <div id="hudOverlay" class="hud-overlay">
+    <!-- Top Action Bar -->
+    <header class="hud-header">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M2 10s2-4 10-4 10 4 10 4-2 7-10 7-10-7-10-7z"></path>
+            <circle cx="8" cy="11" r="2.5"></circle>
+            <circle cx="16" cy="11" r="2.5"></circle>
+            <path d="M12 11v3"></path>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>VR Passthrough SBS</h1>
+          <span id="camStatusBadge" class="status-badge live">Connecting...</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Switch Camera -->
+        <button id="btnFlipCam" class="btn-icon" title="Switch Camera (Back/Front/Wide)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6"></path>
+            <path d="M1 20v-6h6"></path>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          <span class="btn-label">Flip</span>
+        </button>
+
+        <!-- Rotate Stream -->
+        <button id="btnRotate" class="btn-icon" title="Rotate stream 90°">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+          <span id="rotateLabel" class="btn-label">0°</span>
+        </button>
+
+        <!-- Mirror Stream -->
+        <button id="btnMirror" class="btn-icon" title="Mirror Horizontally (Flip Left/Right)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <polyline points="9 21 3 21 3 15"></polyline>
+            <line x1="21" y1="3" x2="14" y2="10"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+          <span class="btn-label">Mirror</span>
+        </button>
+
+        <!-- Flashlight / Torch -->
+        <button id="btnTorch" class="btn-icon" title="Toggle Flashlight / Night Torch">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span class="btn-label">Torch</span>
+        </button>
+
+        <!-- Alignment Crosshair Guides -->
+        <button id="btnGuides" class="btn-icon active" title="Toggle Optical Alignment Reticles">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="9"></circle>
+            <line x1="12" y1="3" x2="12" y2="21"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+          </svg>
+          <span class="btn-label">Guides</span>
+        </button>
+
+        <!-- Fullscreen VR mode -->
+        <button id="btnFullscreen" class="btn-primary" title="Enter Fullscreen VR mode">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+          </svg>
+          <span>Enter VR</span>
+        </button>
+
+        <!-- Hide HUD -->
+        <button id="btnCloseHud" class="btn-icon" title="Hide HUD (or tap anywhere)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Calibration Drawer / Sliders Container -->
+    <div class="hud-body">
+      <!-- Quick Presets Bar -->
+      <div class="presets-bar">
+        <span class="presets-title">Headset Presets:</span>
+        <button class="preset-chip active" data-preset="cardboard">Google Cardboard</button>
+        <button class="preset-chip" data-preset="vrbox">VR Box / Shinecon</button>
+        <button class="preset-chip" data-preset="flat">Flat SBS (Zero Curve)</button>
+        <button class="preset-chip" data-preset="wide">Wide Immersive</button>
+        <button id="btnResetAll" class="preset-chip reset-chip" title="Reset all sliders to defaults">Reset</button>
+      </div>
+
+      <!-- Main Sliders Grid -->
+      <div class="sliders-grid">
+        <!-- 1. DISTANCE (IPD Separation) -->
+        <div class="slider-card highlight">
+          <div class="slider-header">
+            <div class="slider-label">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 12h16m-16 0l4-4m-4 4l4 4m12-4l-4-4m4 4l-4 4"></path>
+              </svg>
+              <span>Eye Distance (IPD)</span>
+            </div>
+            <div class="slider-val-box">
+              <span id="valDistance" class="slider-val">0.00</span>
+              <button class="btn-mini-reset" data-reset="distance" title="Reset Distance">↺</button>
+            </div>
+          </div>
+          <input type="range" id="sliderDistance" min="-0.25" max="0.25" step="0.005" value="0.00">
+          <div class="slider-footer">
+            <span>Narrower</span>
+            <span class="slider-hint">Separation between eye centers</span>
+            <span>Wider</span>
+          </div>
+        </div>
+
+        <!-- 2. CURVE (Barrel / Pincushion Lens Distortion) -->
+        <div class="slider-card highlight">
+          <div class="slider-header">
+            <div class="slider-label">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12c4 8 14 8 18 0"></path>
+                <path d="M3 12c4-8 14-8 18 0"></path>
+              </svg>
+              <span>Lens Curvature (Distortion)</span>
+            </div>
+            <div class="slider-val-box">
+              <span id="valCurve" class="slider-val">+0.32</span>
+              <button class="btn-mini-reset" data-reset="curve" title="Reset Curve">↺</button>
+            </div>
+          </div>
+          <input type="range" id="sliderCurve" min="-0.80" max="0.90" step="0.01" value="0.32">
+          <div class="slider-footer">
+            <span>Pincushion (-)</span>
+            <span class="slider-hint">Compensates headset lens warp</span>
+            <span>Barrel (+)</span>
+          </div>
+        </div>
+
+        <!-- 3. EDGES (Lens Mask / Aperture Diameter) -->
+        <div class="slider-card highlight">
+          <div class="slider-header">
+            <div class="slider-label">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="9"></circle>
+                <circle cx="12" cy="12" r="5" stroke-dasharray="2 2"></circle>
+              </svg>
+              <span>Edge Aperture (Lens Border)</span>
+            </div>
+            <div class="slider-val-box">
+              <span id="valEdgeRadius" class="slider-val">1.15</span>
+              <button class="btn-mini-reset" data-reset="edgeRadius" title="Reset Edge Aperture">↺</button>
+            </div>
+          </div>
+          <input type="range" id="sliderEdgeRadius" min="0.50" max="1.80" step="0.01" value="1.15">
+          <div class="slider-footer">
+            <span>Circular Mask</span>
+            <span class="slider-hint">Cuts off square phone borders</span>
+            <span>Full Display</span>
+          </div>
+        </div>
+
+        <!-- 4. EDGE SOFTNESS (Vignette / Feathering) -->
+        <div class="slider-card">
+          <div class="slider-header">
+            <div class="slider-label">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 3a9 9 0 1 0 9 9"></path>
+                <path d="M12 7a5 5 0 1 0 5 5"></path>
+              </svg>
+              <span>Edge Feather / Softness</span>
+            </div>
+            <div class="slider-val-box">
+              <span id="valEdgeSoftness" class="slider-val">0.18</span>
+              <button class="btn-mini-reset" data-reset="edgeSoftness" title="Reset Softness">↺</button>
+            </div>
+          </div>
+          <input type="range" id="sliderEdgeSoftness" min="0.01" max="0.50" step="0.01" value="0.18">
+          <div class="slider-footer">
+            <span>Sharp Cut</span>
+            <span class="slider-hint">Blends edges into headset dark rim</span>
+            <span>Soft Fade</span>
+          </div>
+        </div>
+
+        <!-- 5. ZOOM / FIELD OF VIEW (Scale) -->
+        <div class="slider-card">
+          <div class="slider-header">
+            <div class="slider-label">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <line x1="11" y1="8" x2="11" y2="14"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+              </svg>
+              <span>Scale & Zoom (FOV)</span>
+            </div>
+            <div class="slider-val-box">
+              <span id="valZoom" class="slider-val">1.10x</span>
+              <button class="btn-mini-reset" data-reset="zoom" title="Reset Zoom">↺</button>
+            </div>
+          </div>
+          <input type="range" id="sliderZoom" min="0.60" max="2.20" step="0.02" value="1.10">
+          <div class="slider-footer">
+            <span>Zoom Out</span>
+            <span class="slider-hint">Adjust perceived distance / size</span>
+            <span>Zoom In</span>
+          </div>
+        </div>
+
+        <!-- 6. VERTICAL ALIGNMENT (Height Offset) -->
+        <div class="slider-card">
+          <div class="slider-header">
+            <div class="slider-label">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 4v16m0-16l-4 4m4-4l4 4m-4 16l-4-4m4 4l4-4"></path>
+              </svg>
+              <span>Vertical Alignment</span>
+            </div>
+            <div class="slider-val-box">
+              <span id="valVertOffset" class="slider-val">0.00</span>
+              <button class="btn-mini-reset" data-reset="vertOffset" title="Reset Vertical">↺</button>
+            </div>
+          </div>
+          <input type="range" id="sliderVertOffset" min="-0.20" max="0.20" step="0.005" value="0.00">
+          <div class="slider-footer">
+            <span>Down</span>
+            <span class="slider-hint">Centers lenses vertically in tray</span>
+            <span>Up</span>
+          </div>
+        </div>
+
+        <!-- 7. CENTER DIVIDER GAP -->
+        <div class="slider-card">
+          <div class="slider-header">
+            <div class="slider-label">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="2" x2="12" y2="22" stroke-width="3"></line>
+                <rect x="2" y="4" width="7" height="16" rx="1"></rect>
+                <rect x="15" y="4" width="7" height="16" rx="1"></rect>
+              </svg>
+              <span>Divider Bar Width</span>
+            </div>
+            <div class="slider-val-box">
+              <span id="valDividerWidth" class="slider-val">4px</span>
+              <button class="btn-mini-reset" data-reset="dividerWidth" title="Reset Divider">↺</button>
+            </div>
+          </div>
+          <input type="range" id="sliderDividerWidth" min="0" max="40" step="2" value="4">
+          <div class="slider-footer">
+            <span>None</span>
+            <span class="slider-hint">Prevents cross-eye bleed in headset</span>
+            <span>Thick (40px)</span>
+          </div>
+        </div>
+
+        <!-- 8. BRIGHTNESS / CONTRAST -->
+        <div class="slider-card">
+          <div class="slider-header">
+            <div class="slider-label">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="5"></circle>
+                <line x1="12" y1="1" x2="12" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="23"></line>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                <line x1="1" y1="12" x2="3" y2="12"></line>
+                <line x1="21" y1="12" x2="23" y2="12"></line>
+              </svg>
+              <span>Brightness Boost</span>
+            </div>
+            <div class="slider-val-box">
+              <span id="valBrightness" class="slider-val">0.05</span>
+              <button class="btn-mini-reset" data-reset="brightness" title="Reset Brightness">↺</button>
+            </div>
+          </div>
+          <input type="range" id="sliderBrightness" min="-0.20" max="0.30" step="0.01" value="0.05">
+          <div class="slider-footer">
+            <span>Dim</span>
+            <span class="slider-hint">Compensates dark VR enclosure</span>
+            <span>Vivid</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Guidance Notes -->
+      <div class="hud-footer-info">
+        <div class="info-tip">
+          <span class="tip-icon">💡</span>
+          <span><strong>Quick VR Tip:</strong> Tap anywhere on screen while in your headset to toggle this menu. Look at the alignment crosshair to center each lens to your pupils.</span>
+        </div>
+        <div class="camera-devices-wrapper">
+          <label for="cameraSelect">Camera Lens:</label>
+          <select id="cameraSelect" class="cam-select"></select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Banner / Toast -->
+  <div id="toastNotification" class="toast-notification"></div>
+
+  <!-- Camera Permission / Info Modal (if camera is blocked or needs HTTPS) -->
+  <div id="modalNotice" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-icon">📷</div>
+      <h3 id="modalTitle">Camera Access Needed</h3>
+      <p id="modalMessage">Please allow camera permissions to stream your surroundings in real-time stereoscopic 3D side-by-side mode.</p>
+      <div class="modal-buttons">
+        <button id="btnGrantCam" class="btn-primary">Try Camera Again</button>
+        <button id="btnTestPattern" class="btn-secondary">Use Virtual Test Scene</button>
+      </div>
+      <div class="modal-help">
+        <small><strong>Note:</strong> On mobile Chrome/Safari, camera requires <code>HTTPS</code> or <code>localhost</code>. If testing over Wi-Fi, run the included <code>serve.py</code> script.</small>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
